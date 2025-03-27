@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Title Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading.active {
+            display: flex;
+        }
+        @keyframes gradientFlow {
+            0% { stop-color: #3B82F6; }
+            50% { stop-color: #60A5FA; }
+            100% { stop-color: #3B82F6; }
+        }
+        .gradient-stop-1 { animation: gradientFlow 3s ease-in-out infinite; }
+        .gradient-stop-2 { animation: gradientFlow 3s ease-in-out infinite reverse; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Logo -->
+        <div class="flex justify-center mb-8">
+            <svg width="400" height="80" viewBox="0 0 400 80" class="fill-current">
+                <!-- Circuit Board Pattern Background -->
+                <rect x="0" y="10" width="60" height="60" fill="none" stroke="#E5E7EB" stroke-width="1"/>
+                <line x1="15" y1="10" x2="15" y2="70" stroke="#E5E7EB" stroke-width="1"/>
+                <line x1="30" y1="10" x2="30" y2="70" stroke="#E5E7EB" stroke-width="1"/>
+                <line x1="45" y1="10" x2="45" y2="70" stroke="#E5E7EB" stroke-width="1"/>
+                <line x1="0" y1="25" x2="60" y2="25" stroke="#E5E7EB" stroke-width="1"/>
+                <line x1="0" y1="40" x2="60" y2="40" stroke="#E5E7EB" stroke-width="1"/>
+                <line x1="0" y1="55" x2="60" y2="55" stroke="#E5E7EB" stroke-width="1"/>
+                
+                <!-- AI Node Points -->
+                <circle cx="15" cy="25" r="3" fill="#3B82F6"/>
+                <circle cx="45" cy="40" r="3" fill="#3B82F6"/>
+                <circle cx="30" cy="55" r="3" fill="#3B82F6"/>
+                
+                <!-- Connecting Lines with Gradient -->
+                <defs>
+                    <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" class="gradient-stop-1" style="stop-color: #3B82F6;"/>
+                        <stop offset="100%" class="gradient-stop-2" style="stop-color: #60A5FA;"/>
+                    </linearGradient>
+                </defs>
+                <path d="M15 25 L45 40 L30 55" stroke="url(#lineGradient)" stroke-width="2" fill="none"/>
+                
+                <!-- Text -->
+                <text x="80" y="50" font-family="Arial, sans-serif" font-weight="bold" font-size="32" fill="#1F2937">
+                    AI Title Analyzer
+                </text>
+            </svg>
+        </div>
+        
+        <!-- Search Form -->
+        <div class="max-w-4xl mx-auto mb-8">
+            <form id="analyzeForm" class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
+                <!-- Keyword Input -->
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="keyword">
+                        Enter keyword to analyze:
+                    </label>
+                    <div class="flex gap-4">
+                        <input class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="keyword" type="text" required>
+                    </div>
+                </div>
+
+                <!-- Two Column Layout for Instructions and Temperature -->
+                <div class="flex gap-6">
+                    <!-- Left Column: AI Instructions -->
+                    <div class="flex-1">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="instructions">
+                            AI Instructions:
+                            <button type="button" id="resetInstructions" class="ml-2 text-blue-500 hover:text-blue-700 text-sm">
+                                Reset to Default
+                            </button>
+                        </label>
+                        <textarea 
+                            id="instructions" 
+                            name="instructions" 
+                            rows="6" 
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                        >{{ instructions }}</textarea>
+                        <p class="text-sm text-gray-500 mt-1">
+                            These instructions will be used for both GPT-4 and Claude title generation
+                        </p>
+                    </div>
+
+                    <!-- Right Column: Temperature Control -->
+                    <div class="w-48">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="temperature">
+                            AI Temperature: <span id="temperatureValue">0.4</span>
+                        </label>
+                        <input 
+                            type="range" 
+                            id="temperature" 
+                            name="temperature" 
+                            min="0" 
+                            max="1" 
+                            step="0.1" 
+                            value="0.4"
+                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        >
+                        <p class="text-sm text-gray-500 mt-1">
+                            Lower values (0.0) are more focused, higher values (1.0) are more creative
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Analyze Button -->
+                <div class="flex items-center justify-center mt-6">
+                    <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="submit">
+                        Analyze
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Results Section -->
+        <div class="flex flex-col md:flex-row gap-8">
+            <!-- Main Results (Left Side) -->
+            <div id="results" class="hidden md:w-1/2 bg-white shadow-md rounded px-8 pt-6 pb-8">
+                <h2 class="text-xl font-bold mb-4">Analysis Results</h2>
+                <div class="mb-4">
+                    <p class="font-bold">Keyword:</p>
+                    <p id="keyword-result" class="ml-4"></p>
+                </div>
+                <div class="mb-4">
+                    <p class="font-bold">Titles Analyzed:</p>
+                    <p id="titles-count" class="ml-4"></p>
+                </div>
+                <div class="mb-4">
+                    <p class="font-bold">Top Terms:</p>
+                    <ul id="top-terms" class="list-disc ml-8"></ul>
+                </div>
+                <div class="mb-4">
+                    <p class="font-bold">Generated Titles:</p>
+                    <div class="ml-4 space-y-2">
+                        <div>
+                            <p class="text-sm text-gray-600"><strong>GPT-4o:</strong></p>
+                            <p id="gpt4-title" class="text-green-600"></p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-600"><strong>Claude 3.7 Sonnet:</strong></p>
+                            <p id="claude-title" class="text-blue-600"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analyzed Titles (Right Side) -->
+            <div id="analyzed-titles-section" class="hidden md:w-1/2 bg-white shadow-md rounded px-8 pt-6 pb-8">
+                <h2 class="text-xl font-bold mb-4">Analyzed Titles</h2>
+                <div class="max-h-[600px] overflow-y-auto">
+                    <ol id="analyzed-titles-list" class="list-decimal pl-8 space-y-2">
+                        <!-- Titles will be inserted here -->
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading" id="loading">
+        <div class="bg-white p-4 rounded-lg shadow-lg">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+            <p class="mt-4 text-gray-700">Analyzing titles...</p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('analyzeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const keyword = document.getElementById('keyword').value;
+            const temperature = document.getElementById('temperature').value;
+            const instructions = document.getElementById('instructions').value;
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            const analyzedTitlesSection = document.getElementById('analyzed-titles-section');
+
+            loading.classList.add('active');
+            results.classList.add('hidden');
+            analyzedTitlesSection.classList.add('hidden');
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `keyword=${encodeURIComponent(keyword)}&temperature=${encodeURIComponent(temperature)}&instructions=${encodeURIComponent(instructions)}`
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+
+                // Update main results
+                document.getElementById('keyword-result').textContent = data.keyword;
+                document.getElementById('titles-count').textContent = data.num_titles_analyzed;
+                document.getElementById('gpt4-title').textContent = data.gpt4_title;
+                document.getElementById('claude-title').textContent = data.claude_title;
+
+                const topTermsList = document.getElementById('top-terms');
+                topTermsList.innerHTML = '';
+                data.top_terms.forEach(term => {
+                    const li = document.createElement('li');
+                    li.textContent = `${term} (${data.term_frequency[term]} occurrences)`;
+                    topTermsList.appendChild(li);
+                });
+
+                // Update analyzed titles list
+                const analyzedTitlesList = document.getElementById('analyzed-titles-list');
+                analyzedTitlesList.innerHTML = '';
+                data.analyzed_titles.forEach((title, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'text-gray-700 pb-2 break-words';
+                    li.style.marginLeft = '1.5em';  // Add margin for numbers
+                    li.style.paddingLeft = '0.5em'; // Add padding after numbers
+                    li.value = index + 1;  // Ensure correct numbering
+                    li.textContent = title;
+                    analyzedTitlesList.appendChild(li);
+                });
+
+                results.classList.remove('hidden');
+                analyzedTitlesSection.classList.remove('hidden');
+            } catch (error) {
+                alert('An error occurred while analyzing the titles.');
+                console.error('Error:', error);
+            } finally {
+                loading.classList.remove('active');
+            }
+        });
+
+        // Update temperature value display
+        const temperatureSlider = document.getElementById('temperature');
+        const temperatureValue = document.getElementById('temperatureValue');
+        
+        temperatureSlider.addEventListener('input', function() {
+            temperatureValue.textContent = this.value;
+        });
+
+        // Handle reset instructions button
+        document.getElementById('resetInstructions').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/reset-instructions', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                document.getElementById('instructions').value = data.instructions;
+            } catch (error) {
+                console.error('Error resetting instructions:', error);
+                alert('Error resetting instructions');
+            }
+        });
+    </script>
+</body>
+</html> 

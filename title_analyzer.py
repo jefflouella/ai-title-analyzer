@@ -1,0 +1,390 @@
+import json
+from collections import Counter
+import nltk
+import ssl
+import certifi
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+import openai
+from anthropic import Anthropic
+from typing import List, Dict, Tuple
+import os
+from dotenv import load_dotenv
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+from urllib.parse import urlparse
+
+# Load environment variables
+load_dotenv()
+
+# Fix SSL certificate issues
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+# Set up NLTK data path
+nltk_data_dir = os.path.expanduser('~/nltk_data')
+if not os.path.exists(nltk_data_dir):
+    os.makedirs(nltk_data_dir)
+
+# Download NLTK data with SSL verification
+def download_nltk_data():
+    resources = [
+        'punkt',
+        'stopwords',
+        'punkt_tab',
+        'tokenizers/punkt'
+    ]
+    
+    for resource in resources:
+        try:
+            nltk.data.find(resource)
+        except LookupError:
+            print(f"Downloading {resource}...")
+            nltk.download(resource, quiet=True)
+
+# Download all required NLTK data
+download_nltk_data()
+
+class TitleAnalyzer:
+    def __init__(self, openai_key: str, anthropic_key: str):
+        """Initialize the TitleAnalyzer with necessary API keys."""
+        self.openai_key = openai_key
+        self.anthropic_key = anthropic_key
+        self.stop_words = set(stopwords.words('english'))
+        # Add custom stop words relevant for titles
+        self.stop_words.update(['|', '-', '2025', '2024', '2023', 'best', 'top', 'guide'])
+        
+        # Initialize API clients
+        self.openai_client = openai.OpenAI(api_key=self.openai_key)
+        self.anthropic_client = Anthropic(api_key=self.anthropic_key)
+        
+        # Set up Chrome options
+        self.chrome_options = Options()
+        # Configure headless mode with new syntax
+        self.chrome_options.add_argument('--headless=new')
+        self.chrome_options.add_argument('--no-sandbox')
+        self.chrome_options.add_argument('--disable-dev-shm-usage')
+        self.chrome_options.add_argument('--disable-gpu')
+        self.chrome_options.add_argument('--window-size=1920,1080')
+        self.chrome_options.add_argument('--disable-extensions')
+        self.chrome_options.add_argument('--disable-infobars')
+        self.chrome_options.add_argument('--disable-notifications')
+        self.chrome_options.add_argument('--disable-popup-blocking')
+        self.chrome_options.add_argument('--start-maximized')
+        
+        # Add a realistic user agent
+        self.chrome_options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+        
+        # Add additional headers to look more like a real browser
+        self.chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        self.chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        self.chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        # Add additional preferences
+        prefs = {
+            "profile.default_content_setting_values.notifications": 2,
+            "profile.managed_default_content_settings.images": 1,
+            "profile.default_content_setting_values.cookies": 1
+        }
+        self.chrome_options.add_experimental_option("prefs", prefs)
+
+    def get_search_results(self, keyword: str, num_results: int = 100) -> List[str]:
+        """Fetch search results by scraping Google."""
+        print(f"Scraping Google results for: {keyword}")
+        
+        # Initialize the Chrome WebDriver
+        try:
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=self.chrome_options)
+            
+            # Set page load timeout
+            driver.set_page_load_timeout(30)
+            
+            # Execute CDP commands to prevent detection
+            driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+                "userAgent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            })
+            
+            # Navigate directly to Google search with num parameter
+            search_url = f'https://www.google.com/search?q={keyword}&num={num_results}'
+            print(f"Navigating to: {search_url}")
+            driver.get(search_url)
+            
+            # Add a small delay to ensure proper rendering
+            time.sleep(2)
+            
+            # Print page source for debugging
+            print("\nChecking page source for bot detection signs...")
+            page_source = driver.page_source.lower()
+            
+            # Check for common bot detection signs
+            bot_signs = [
+                "unusual traffic",
+                "please verify you are a human",
+                "captcha",
+                "automated queries",
+                "robot",
+                "automation"
+            ]
+            
+            for sign in bot_signs:
+                if sign in page_source:
+                    print(f"WARNING: Found bot detection sign: '{sign}'")
+            
+            # Accept cookies if the dialog appears (common in some regions)
+            try:
+                cookie_button = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Accept all')]"))
+                )
+                cookie_button.click()
+                print("Clicked cookie consent button")
+            except Exception as e:
+                print(f"No cookie dialog found or couldn't click it: {e}")
+            
+            # Wait for results to load with explicit wait
+            print("Waiting for search results to load...")
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "div.g"))
+                )
+            except Exception as e:
+                print(f"Warning: Could not find main results container: {e}")
+            
+            # Get titles using the current Google search result structure
+            print("Attempting to find titles...")
+            title_elements = driver.find_elements(By.CSS_SELECTOR, "h3.LC20lb")
+            
+            # Print debugging information
+            print(f"\nFound {len(title_elements)} title elements")
+            if title_elements:
+                print("First title text:", title_elements[0].text)
+            
+            results = []
+            for title_elem in title_elements:
+                if not title_elem.text:
+                    continue
+                    
+                title = title_elem.text
+                try:
+                    # Find the parent anchor tag that contains the href
+                    parent_a = title_elem.find_element(By.XPATH, "./ancestor::a")
+                    if parent_a:
+                        href = parent_a.get_attribute("href")
+                        if href:
+                            # Extract domain from href
+                            domain = urlparse(href).netloc
+                            if domain.startswith('www.'):
+                                domain = domain[4:]  # Remove www.
+                            if domain:
+                                results.append(f"{title} ({domain})")
+                                continue
+                except:
+                    pass
+                
+                # If we couldn't get the domain or there was an error, just add the title
+                results.append(title)
+            
+            if not results:
+                print("No results found")
+                return []
+            
+            print(f"\nFound {len(results)} results to analyze:")
+            for i, result in enumerate(results[:10], 1):
+                print(f"{i}. {result}")
+            if len(results) > 10:
+                print(f"... and {len(results) - 10} more")
+            
+            return results[:num_results]
+            
+        except Exception as e:
+            print(f"Error scraping Google results: {str(e)}")
+            print("Full error details:", e.__class__.__name__)
+            return []
+            
+        finally:
+            try:
+                driver.quit()
+            except:
+                pass
+
+    def analyze_titles(self, titles: List[str]) -> Tuple[Dict[str, int], List[str]]:
+        """Analyze titles to find common terms and patterns."""
+        try:
+            # Strip domains from titles before analysis
+            clean_titles = [title.split(' (')[0] for title in titles]
+            
+            all_text = ' '.join(clean_titles).lower()
+            # Simple word splitting as fallback if NLTK tokenization fails
+            try:
+                tokens = word_tokenize(all_text)
+            except:
+                print("NLTK tokenization failed, falling back to basic splitting")
+                tokens = all_text.split()
+            
+            filtered_tokens = [
+                token for token in tokens
+                if token not in self.stop_words
+                and token.isalnum()
+                and len(token) > 2
+            ]
+            
+            term_frequency = Counter(filtered_tokens)
+            top_terms = [term for term, _ in term_frequency.most_common(10)]
+            
+            return dict(term_frequency), top_terms
+            
+        except Exception as e:
+            print(f"Error in analyze_titles: {e}")
+            return {}, []
+
+    def generate_title_with_gpt4(self, keyword: str, top_terms: List[str], temperature: float = 0.4, instructions: str = None) -> str:
+        """Generate a unique title using GPT-4 based on analysis."""
+        prompt = f"""Based on analysis of top-ranking titles for the keyword '{keyword}',
+        the most common terms are: {', '.join(top_terms)}.
+        
+        {instructions}"""
+
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4o-2024-11-20",
+                messages=[
+                    {"role": "system", "content": "You are an SEO expert specialized in creating optimized title tags. Return only the title without quotes."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=100,
+                temperature=temperature
+            )
+
+            # Get the response and clean it up
+            title = response.choices[0].message.content.strip()
+            
+            # Remove any quotes
+            title = title.strip('"').strip("'")
+            
+            return title
+
+        except Exception as e:
+            print(f"Error generating title with GPT-4: {e}")
+            return ""
+
+    def generate_title_with_claude(self, keyword: str, top_terms: List[str], temperature: float = 0.4, instructions: str = None) -> str:
+        """Generate a unique title using Claude based on analysis."""
+        try:
+            prompt = f"""Based on analysis of top-ranking titles for the keyword '{keyword}',
+            the most common terms are: {', '.join(top_terms)}.
+            
+            {instructions}"""
+
+            response = self.anthropic_client.messages.create(
+                model="claude-3-7-sonnet-20250219",
+                max_tokens=100,
+                temperature=temperature,
+                system="You are an SEO expert. Generate only the title tag without any additional text or explanation.",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            )
+
+            # Get the response and clean it up
+            title = response.content[0].text.strip()
+            
+            # Remove any quotes or extra formatting
+            title = title.strip('"').strip("'")
+            
+            # Log the response for debugging
+            print(f"Claude generated title: {title}")
+
+            if not title:
+                return "Error: Claude did not generate a title"
+
+            return title
+
+        except Exception as e:
+            print(f"Error generating title with Claude: {e}")
+            print("Full error details:", e.__class__.__name__)
+            return "Error generating title with Claude"
+
+    def run_analysis(self, keyword: str, temperature: float = 0.4, instructions: str = None) -> Dict:
+        """Run the complete analysis and title generation process."""
+        # Get search results
+        print(f"Fetching search results for: {keyword}")
+        titles = self.get_search_results(keyword)
+
+        if not titles:
+            return {
+                "keyword": keyword,
+                "num_titles_analyzed": 0,
+                "top_terms": [],
+                "term_frequency": {},
+                "gpt4_title": "No titles found to analyze",
+                "claude_title": "No titles found to analyze",
+                "analyzed_titles": []
+            }
+
+        # Analyze titles
+        print("Analyzing titles...")
+        term_frequency, top_terms = self.analyze_titles(titles)
+
+        # Generate new titles
+        print("Generating optimized titles...")
+        gpt4_title = self.generate_title_with_gpt4(keyword, top_terms, temperature, instructions)
+        claude_title = self.generate_title_with_claude(keyword, top_terms, temperature, instructions)
+
+        return {
+            "keyword": keyword,
+            "num_titles_analyzed": len(titles),
+            "top_terms": top_terms,
+            "term_frequency": term_frequency,
+            "gpt4_title": gpt4_title,
+            "claude_title": claude_title,
+            "analyzed_titles": titles
+        }
+
+def print_results(results: Dict):
+    """Print results in a formatted way"""
+    print("\nAnalysis Results")
+    print(f"Keyword: {results['keyword']}")
+    print(f"Titles Analyzed: {results['num_titles_analyzed']}")
+    print("\nTop Terms:")
+    for term in results['top_terms']:
+        print(f"- {term}: {results['term_frequency'][term]} occurrences")
+    print("\nGenerated Titles:")
+    print(f"GPT-4o: {results['gpt4_title']}")
+    print(f"Claude 3.7 Sonnet: {results['claude_title']}")
+
+def main():
+    # Get API keys from environment variables
+    openai_key = os.getenv('OPENAI_KEY')
+    anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+
+    if not openai_key or not anthropic_key:
+        print("Error: OPENAI_KEY or ANTHROPIC_API_KEY not found. Please set both in your .env file")
+        return
+
+    # Initialize analyzer
+    analyzer = TitleAnalyzer(openai_key, anthropic_key)
+
+    # Get keyword from user
+    keyword = input("Enter the keyword to analyze: ")
+
+    # Run analysis
+    results = analyzer.run_analysis(keyword)
+
+    # Display results
+    print_results(results)
+
+if __name__ == "__main__":
+    main()
