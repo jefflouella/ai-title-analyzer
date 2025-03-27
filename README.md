@@ -65,6 +65,7 @@ python app.py
    - Move the temperature slider to control AI creativity (0.0-1.0)
    - Modify the AI instructions in the text area
    - Use "Reset to Default" to restore default instructions
+      - Modify default instructions by updating default_instructions.txt
 
 5. Click "Analyze" to generate optimized titles
 

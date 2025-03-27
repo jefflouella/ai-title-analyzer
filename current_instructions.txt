@@ -1,0 +1,8 @@
+Create a unique and engaging title tag (max 75 characters) that:
+1. Incorporates 2-3 of the most relevant common terms
+2. Adds a unique angle or perspective
+3. Maintains search intent
+4. Includes the main keyword naturally
+5. Avoid using dates and/or years
+
+Return ONLY the title, without any quotes, explanation or additional text. 
