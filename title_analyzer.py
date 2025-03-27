@@ -56,17 +56,30 @@ def download_nltk_data():
 download_nltk_data()
 
 class TitleAnalyzer:
-    def __init__(self, openai_key: str, anthropic_key: str):
-        """Initialize the TitleAnalyzer with necessary API keys."""
+    def __init__(self, openai_key: str = None, anthropic_key: str = None):
+        """Initialize the TitleAnalyzer with available API keys."""
         self.openai_key = openai_key
         self.anthropic_key = anthropic_key
         self.stop_words = set(stopwords.words('english'))
         # Add custom stop words relevant for titles
         self.stop_words.update(['|', '-', '2025', '2024', '2023', 'best', 'top', 'guide'])
         
-        # Initialize API clients
-        self.openai_client = openai.OpenAI(api_key=self.openai_key)
-        self.anthropic_client = Anthropic(api_key=self.anthropic_key)
+        # Initialize API clients only if keys are provided
+        self.openai_client = None
+        self.anthropic_client = None
+        
+        print("\nInitializing API clients:")
+        if self.openai_key:
+            print("- Setting up OpenAI client")
+            self.openai_client = openai.OpenAI(api_key=self.openai_key)
+        else:
+            print("- OpenAI client not initialized (no API key)")
+        
+        if self.anthropic_key:
+            print("- Setting up Anthropic client")
+            self.anthropic_client = Anthropic(api_key=self.anthropic_key)
+        else:
+            print("- Anthropic client not initialized (no API key)")
         
         # Set up Chrome options
         self.chrome_options = Options()
@@ -249,12 +262,17 @@ class TitleAnalyzer:
 
     def generate_title_with_gpt4(self, keyword: str, top_terms: List[str], temperature: float = 0.4, instructions: str = None) -> str:
         """Generate a unique title using GPT-4 based on analysis."""
+        if not self.openai_client:
+            print("Skipping GPT-4 title generation - no API key available")
+            return "OpenAI API key not provided"
+
         prompt = f"""Based on analysis of top-ranking titles for the keyword '{keyword}',
         the most common terms are: {', '.join(top_terms)}.
         
         {instructions}"""
 
         try:
+            print("Generating title with GPT-4...")
             response = self.openai_client.chat.completions.create(
                 model="gpt-4o-2024-11-20",
                 messages=[
@@ -270,16 +288,22 @@ class TitleAnalyzer:
             
             # Remove any quotes
             title = title.strip('"').strip("'")
+            print(f"GPT-4 generated title: {title}")
             
             return title
 
         except Exception as e:
             print(f"Error generating title with GPT-4: {e}")
-            return ""
+            return "Error generating title with GPT-4"
 
     def generate_title_with_claude(self, keyword: str, top_terms: List[str], temperature: float = 0.4, instructions: str = None) -> str:
         """Generate a unique title using Claude based on analysis."""
+        if not self.anthropic_client:
+            print("Skipping Claude title generation - no API key available")
+            return "Anthropic API key not provided"
+
         try:
+            print("Generating title with Claude...")
             prompt = f"""Based on analysis of top-ranking titles for the keyword '{keyword}',
             the most common terms are: {', '.join(top_terms)}.
             
@@ -304,7 +328,6 @@ class TitleAnalyzer:
             # Remove any quotes or extra formatting
             title = title.strip('"').strip("'")
             
-            # Log the response for debugging
             print(f"Claude generated title: {title}")
 
             if not title:
@@ -314,16 +337,16 @@ class TitleAnalyzer:
 
         except Exception as e:
             print(f"Error generating title with Claude: {e}")
-            print("Full error details:", e.__class__.__name__)
             return "Error generating title with Claude"
 
     def run_analysis(self, keyword: str, temperature: float = 0.4, instructions: str = None) -> Dict:
         """Run the complete analysis and title generation process."""
         # Get search results
-        print(f"Fetching search results for: {keyword}")
+        print(f"\nStarting analysis for keyword: {keyword}")
         titles = self.get_search_results(keyword)
 
         if not titles:
+            print("No titles found to analyze")
             return {
                 "keyword": keyword,
                 "num_titles_analyzed": 0,
@@ -335,23 +358,31 @@ class TitleAnalyzer:
             }
 
         # Analyze titles
-        print("Analyzing titles...")
+        print(f"\nAnalyzing {len(titles)} titles...")
         term_frequency, top_terms = self.analyze_titles(titles)
 
-        # Generate new titles
-        print("Generating optimized titles...")
-        gpt4_title = self.generate_title_with_gpt4(keyword, top_terms, temperature, instructions)
-        claude_title = self.generate_title_with_claude(keyword, top_terms, temperature, instructions)
-
-        return {
+        # Generate new titles based on available APIs
+        print("\nGenerating optimized titles...")
+        results = {
             "keyword": keyword,
             "num_titles_analyzed": len(titles),
             "top_terms": top_terms,
             "term_frequency": term_frequency,
-            "gpt4_title": gpt4_title,
-            "claude_title": claude_title,
             "analyzed_titles": titles
         }
+
+        # Generate titles only if API clients are available
+        if self.openai_client:
+            results["gpt4_title"] = self.generate_title_with_gpt4(keyword, top_terms, temperature, instructions)
+        else:
+            results["gpt4_title"] = "OpenAI API key not provided"
+
+        if self.anthropic_client:
+            results["claude_title"] = self.generate_title_with_claude(keyword, top_terms, temperature, instructions)
+        else:
+            results["claude_title"] = "Anthropic API key not provided"
+
+        return results
 
 def print_results(results: Dict):
     """Print results in a formatted way"""
@@ -362,20 +393,32 @@ def print_results(results: Dict):
     for term in results['top_terms']:
         print(f"- {term}: {results['term_frequency'][term]} occurrences")
     print("\nGenerated Titles:")
-    print(f"GPT-4o: {results['gpt4_title']}")
-    print(f"Claude 3.7 Sonnet: {results['claude_title']}")
+    
+    if results['gpt4_title'] != "OpenAI API key not provided":
+        print(f"GPT-4o: {results['gpt4_title']}")
+    
+    if results['claude_title'] != "Anthropic API key not provided":
+        print(f"Claude 3.7 Sonnet: {results['claude_title']}")
 
 def main():
     # Get API keys from environment variables
     openai_key = os.getenv('OPENAI_KEY')
     anthropic_key = os.getenv('ANTHROPIC_API_KEY')
 
-    if not openai_key or not anthropic_key:
-        print("Error: OPENAI_KEY or ANTHROPIC_API_KEY not found. Please set both in your .env file")
+    if not openai_key and not anthropic_key:
+        print("Error: Neither OPENAI_KEY nor ANTHROPIC_API_KEY found. Please set at least one API key in your .env file")
         return
 
-    # Initialize analyzer
+    # Initialize analyzer with available keys
     analyzer = TitleAnalyzer(openai_key, anthropic_key)
+
+    # Print available services
+    print("\nAvailable AI Services:")
+    if openai_key:
+        print("✓ GPT-4")
+    if anthropic_key:
+        print("✓ Claude")
+    print()
 
     # Get keyword from user
     keyword = input("Enter the keyword to analyze: ")

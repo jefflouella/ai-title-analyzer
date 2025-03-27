@@ -182,69 +182,81 @@
     </div>
 
     <script>
-        document.getElementById('analyzeForm').addEventListener('submit', async (e) => {
+        document.getElementById('analyzeForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const keyword = document.getElementById('keyword').value;
-            const temperature = document.getElementById('temperature').value;
-            const instructions = document.getElementById('instructions').value;
-            const loading = document.getElementById('loading');
-            const results = document.getElementById('results');
-            const analyzedTitlesSection = document.getElementById('analyzed-titles-section');
-
-            loading.classList.add('active');
-            results.classList.add('hidden');
-            analyzedTitlesSection.classList.add('hidden');
-
+            
+            // Show loading overlay
+            document.getElementById('loading').classList.add('active');
+            
+            // Create FormData from the form
+            const formData = new FormData();
+            
+            // Add the form values explicitly
+            formData.append('keyword', document.getElementById('keyword').value);
+            formData.append('temperature', document.getElementById('temperature').value);
+            formData.append('instructions', document.getElementById('instructions').value);
+            
             try {
                 const response = await fetch('/analyze', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `keyword=${encodeURIComponent(keyword)}&temperature=${encodeURIComponent(temperature)}&instructions=${encodeURIComponent(instructions)}`
+                    body: formData
                 });
-
+                
                 const data = await response.json();
-
-                if (data.error) {
-                    alert(data.error);
-                    return;
-                }
-
-                // Update main results
+                
+                // Update results
                 document.getElementById('keyword-result').textContent = data.keyword;
                 document.getElementById('titles-count').textContent = data.num_titles_analyzed;
-                document.getElementById('gpt4-title').textContent = data.gpt4_title;
-                document.getElementById('claude-title').textContent = data.claude_title;
-
-                const topTermsList = document.getElementById('top-terms');
-                topTermsList.innerHTML = '';
+                
+                // Update top terms
+                const termsList = document.getElementById('top-terms');
+                termsList.innerHTML = '';
                 data.top_terms.forEach(term => {
                     const li = document.createElement('li');
                     li.textContent = `${term} (${data.term_frequency[term]} occurrences)`;
-                    topTermsList.appendChild(li);
+                    termsList.appendChild(li);
                 });
-
-                // Update analyzed titles list
+                
+                // Update generated titles
+                if (data.gpt4_title) {
+                    const gpt4Div = document.getElementById('gpt4-title').parentElement;
+                    gpt4Div.style.display = 'block';
+                    document.getElementById('gpt4-title').textContent = data.gpt4_title;
+                } else {
+                    document.getElementById('gpt4-title').parentElement.style.display = 'none';
+                }
+                
+                if (data.claude_title) {
+                    const claudeDiv = document.getElementById('claude-title').parentElement;
+                    claudeDiv.style.display = 'block';
+                    document.getElementById('claude-title').textContent = data.claude_title;
+                } else {
+                    document.getElementById('claude-title').parentElement.style.display = 'none';
+                }
+                
+                // Update analyzed titles
                 const analyzedTitlesList = document.getElementById('analyzed-titles-list');
                 analyzedTitlesList.innerHTML = '';
                 data.analyzed_titles.forEach((title, index) => {
                     const li = document.createElement('li');
                     li.className = 'text-gray-700 pb-2 break-words';
-                    li.style.marginLeft = '1.5em';  // Add margin for numbers
-                    li.style.paddingLeft = '0.5em'; // Add padding after numbers
-                    li.value = index + 1;  // Ensure correct numbering
+                    li.style.marginLeft = '1.5em';
+                    li.style.paddingLeft = '0.5em';
+                    li.value = index + 1;
                     li.textContent = title;
                     analyzedTitlesList.appendChild(li);
                 });
-
-                results.classList.remove('hidden');
-                analyzedTitlesSection.classList.remove('hidden');
+                
+                // Show results sections
+                document.getElementById('results').classList.remove('hidden');
+                document.getElementById('analyzed-titles-section').classList.remove('hidden');
+                
             } catch (error) {
-                alert('An error occurred while analyzing the titles.');
                 console.error('Error:', error);
+                alert('An error occurred while analyzing the keyword');
             } finally {
-                loading.classList.remove('active');
+                // Hide loading overlay
+                document.getElementById('loading').classList.remove('active');
             }
         });
 
