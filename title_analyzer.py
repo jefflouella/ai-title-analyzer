@@ -123,18 +123,34 @@ class TitleAnalyzer:
             # Set page load timeout
             driver.set_page_load_timeout(30)
             
+            # Add more randomized headers
+            headers = {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Connection': 'keep-alive',
+                'DNT': '1',
+                'Upgrade-Insecure-Requests': '1'
+            }
+            
             # Execute CDP commands to prevent detection
             driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-                "userAgent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                "userAgent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                "acceptLanguage": "en-US,en;q=0.9"
             })
             
-            # Navigate directly to Google search with num parameter
-            search_url = f'https://www.google.com/search?q={keyword}&num={num_results}'
+            # Set extra headers
+            for key, value in headers.items():
+                driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {key: value}})
+            
+            # Navigate directly to Google search with num parameter and additional parameters
+            # Replace spaces with plus signs in the keyword
+            formatted_keyword = keyword.replace(' ', '+')
+            search_url = f'https://www.google.com/search?q={formatted_keyword}&num={num_results}&hl=en&safe=off&gl=US&pws=0'
             print(f"Navigating to: {search_url}")
             driver.get(search_url)
             
-            # Add a small delay to ensure proper rendering
-            time.sleep(2)
+            # Random delay between 2-4 seconds
+            time.sleep(2 + (time.time() % 2))
             
             # Print page source for debugging
             print("\nChecking page source for bot detection signs...")
@@ -166,28 +182,56 @@ class TitleAnalyzer:
             
             # Wait for results to load with explicit wait
             print("Waiting for search results to load...")
-            try:
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "div.g"))
-                )
-            except Exception as e:
-                print(f"Warning: Could not find main results container: {e}")
             
-            # Get titles using the current Google search result structure
-            print("Attempting to find titles...")
-            title_elements = driver.find_elements(By.CSS_SELECTOR, "h3.LC20lb")
+            # Try multiple selectors for search results
+            selectors = [
+                "div.g",
+                "div.MjjYud",
+                "div[data-sokoban-container]",
+                "div.rc"
+            ]
             
-            # Print debugging information
-            print(f"\nFound {len(title_elements)} title elements")
-            if title_elements:
-                print("First title text:", title_elements[0].text)
-            
-            results = []
-            for title_elem in title_elements:
-                if not title_elem.text:
+            result_container = None
+            for selector in selectors:
+                try:
+                    result_container = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    if result_container:
+                        print(f"Found results using selector: {selector}")
+                        break
+                except:
                     continue
-                    
+            
+            if not result_container:
+                print("Warning: Could not find main results container with any selector")
+            
+            # Try multiple selectors for titles
+            title_selectors = [
+                "h3.LC20lb",
+                "h3.DKV0Md",
+                "div.yuRUbf h3",
+                "h3"  # Fallback to any h3
+            ]
+            
+            all_titles = []
+            for selector in title_selectors:
+                titles = driver.find_elements(By.CSS_SELECTOR, selector)
+                if titles:
+                    print(f"Found {len(titles)} titles with selector: {selector}")
+                    all_titles.extend(titles)
+            
+            # Deduplicate titles
+            seen_titles = set()
+            results = []
+            
+            for title_elem in all_titles:
+                if not title_elem.text or title_elem.text.lower() in seen_titles:
+                    continue
+                
                 title = title_elem.text
+                seen_titles.add(title.lower())
+                
                 try:
                     # Find the parent anchor tag that contains the href
                     parent_a = title_elem.find_element(By.XPATH, "./ancestor::a")
@@ -209,9 +253,13 @@ class TitleAnalyzer:
             
             if not results:
                 print("No results found")
+                # Save the page source for debugging
+                with open('google_page.html', 'w', encoding='utf-8') as f:
+                    f.write(driver.page_source)
+                print("Saved page source to google_page.html for debugging")
                 return []
             
-            print(f"\nFound {len(results)} results to analyze:")
+            print(f"\nFound {len(results)} unique results to analyze:")
             for i, result in enumerate(results[:10], 1):
                 print(f"{i}. {result}")
             if len(results) > 10:
