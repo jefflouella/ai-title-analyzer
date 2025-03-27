@@ -2,6 +2,9 @@
 
 A web application that analyzes search engine titles and generates optimized title suggestions using AI (GPT-4 and Claude).
 
+## Screenshot
+![AI Title Analyzer Screenshot](images/screenshot.png)
+
 ## Features
 
 - Scrapes Google search results for any given keyword
@@ -22,7 +25,7 @@ A web application that analyzes search engine titles and generates optimized tit
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/ai-title-analyzer.git
+git clone https://github.com/jefflouella/ai-title-analyzer.git
 cd ai-title-analyzer
 ```
 
