@@ -223,7 +223,6 @@ class TitleAnalyzer:
                 'people also search for',
                 'more places',
                 'map',
-                'results for georgia',
                 'places',
                 'results for',  # This will catch "Results for *"
                 'ai overview',
@@ -234,7 +233,10 @@ class TitleAnalyzer:
                 'players',
                 'profiles',
                 'people also search for view 10+ more',
-                'for context'
+                'for context',
+                'short videos',
+                'overview',
+                'latest posts'
             }
             
             titles = []
