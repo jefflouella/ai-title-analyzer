@@ -220,7 +220,21 @@ class TitleAnalyzer:
                 'sponsored',
                 'login',
                 'what people are saying',
-                'people also search for'
+                'people also search for',
+                'more places',
+                'map',
+                'results for georgia',
+                'places',
+                'results for',  # This will catch "Results for *"
+                'ai overview',
+                'description',
+                'also in the news',
+                'news about',  # This will catch "News about *"
+                'shopping ideas',
+                'players',
+                'profiles',
+                'people also search for view 10+ more',
+                'for context'
             }
             
             titles = []
