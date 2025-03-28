@@ -216,13 +216,68 @@ class TitleAnalyzer:
                 'div[role="heading"]'  # Another common selector
             ]
             
+            # List of titles to exclude
+            excluded_titles = {
+                'popular products',
+                'people also ask',
+                'more products',
+                'fast pickup or delivery',
+                'in stores nearby',
+                'deals on basketball shoes',
+                'images',
+                'discussions and forums',
+                'shopping results',
+                'related searches',
+                'top stories',
+                'videos',
+                'news',
+                'maps',
+                'books',
+                'flights',
+                'hotels',
+                'finance',
+                'all',
+                'shopping',
+                'news',
+                'videos',
+                'images',
+                'maps',
+                'books',
+                'flights',
+                'finance',
+                'all filters',
+                'reviews'
+            }
+            
             titles = []
+            domains = []
             for selector in title_selectors:
                 try:
                     elements = results_container.find_elements(By.CSS_SELECTOR, selector)
                     if elements:
                         print(f"Found {len(elements)} titles with selector: {selector}")
-                        titles.extend([elem.text for elem in elements if elem.text])
+                        for elem in elements:
+                            title_text = elem.text.strip().lower()
+                            # Skip if title is in excluded list
+                            if title_text in excluded_titles:
+                                continue
+                            if elem.text:
+                                # Try to find the parent anchor tag that contains the href
+                                try:
+                                    parent_a = elem.find_element(By.XPATH, "./ancestor::a")
+                                    if parent_a:
+                                        href = parent_a.get_attribute("href")
+                                        if href:
+                                            domain = urlparse(href).netloc
+                                            if domain.startswith('www.'):
+                                                domain = domain[4:]  # Remove www.
+                                            if domain:
+                                                titles.append(f"{elem.text} ({domain})")
+                                                continue
+                                except:
+                                    pass
+                                # If we couldn't get the domain or there was an error, just add the title
+                                titles.append(elem.text)
                 except Exception as e:
                     print(f"Error with selector {selector}: {str(e)}")
                     continue
@@ -230,24 +285,6 @@ class TitleAnalyzer:
             # Remove duplicates while preserving order
             titles = list(dict.fromkeys(titles))
             print(f"Found {len(titles)} unique titles")
-            
-            # Extract domains from the results
-            domains = []
-            try:
-                links = results_container.find_elements(By.CSS_SELECTOR, 'a')
-                for link in links:
-                    try:
-                        href = link.get_attribute('href')
-                        if href:
-                            domain = urlparse(href).netloc
-                            if domain and domain not in domains:
-                                domains.append(domain)
-                    except:
-                        continue
-            except Exception as e:
-                print(f"Error extracting domains: {str(e)}")
-            
-            print(f"Found {len(domains)} unique domains")
             
             # Save the page source for debugging if no results found
             if not titles:
