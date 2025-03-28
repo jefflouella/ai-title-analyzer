@@ -82,35 +82,16 @@ class TitleAnalyzer:
         else:
             print("- Anthropic client not initialized (no API key)")
         
-        # Set up Chrome options
+        # Set up Chrome options with minimal configuration
         self.chrome_options = Options()
-        # Configure headless mode with new syntax
-        self.chrome_options.add_argument('--headless=new')
+        self.chrome_options.add_argument('--headless=new')  # Start headless by default
         self.chrome_options.add_argument('--no-sandbox')
-        self.chrome_options.add_argument('--disable-dev-shm-usage')
-        self.chrome_options.add_argument('--disable-gpu')
         self.chrome_options.add_argument('--window-size=1920,1080')
-        self.chrome_options.add_argument('--disable-extensions')
-        self.chrome_options.add_argument('--disable-infobars')
-        self.chrome_options.add_argument('--disable-notifications')
-        self.chrome_options.add_argument('--disable-popup-blocking')
-        self.chrome_options.add_argument('--start-maximized')
-        
-        # Add a realistic user agent
         self.chrome_options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
         
-        # Add additional headers to look more like a real browser
-        self.chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        self.chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        self.chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        # Add additional preferences
-        prefs = {
-            "profile.default_content_setting_values.notifications": 2,
-            "profile.managed_default_content_settings.images": 1,
-            "profile.default_content_setting_values.cookies": 1
-        }
-        self.chrome_options.add_experimental_option("prefs", prefs)
+        # Create a directory for cookies if it doesn't exist
+        if not os.path.exists('browser_data'):
+            os.makedirs('browser_data')
 
     def get_search_results(self, keyword: str, num_results: int = 100) -> List[str]:
         """Fetch search results by scraping Google."""
@@ -121,92 +102,46 @@ class TitleAnalyzer:
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=self.chrome_options)
             
-            # Set page load timeout
-            driver.set_page_load_timeout(30)
+            # Load cookies if they exist
+            cookies_file = 'browser_data/google_cookies.json'
+            if os.path.exists(cookies_file):
+                print("Loading saved cookies...")
+                driver.get('https://www.google.com')
+                with open(cookies_file, 'r') as f:
+                    cookies = json.load(f)
+                    for cookie in cookies:
+                        try:
+                            driver.add_cookie(cookie)
+                        except:
+                            continue
             
-            # Add more realistic browser headers
-            driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-                "userAgent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                "platform": "MacIntel",
-                "acceptLanguage": "en-US,en;q=0.9",
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                "sec-ch-ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"macOS"',
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1"
-            })
-            
-            # Add random delay between 3-5 seconds to look more human-like
-            time.sleep(random.uniform(3, 5))
-            
-            # Navigate directly to Google search with num parameter and additional parameters
-            # Replace spaces with plus signs in the keyword
-            formatted_keyword = keyword.replace(' ', '+')
-            search_url = f'https://www.google.com/search?q={formatted_keyword}&num={num_results}&hl=en&safe=off&gl=US&pws=0&sourceid=chrome&ie=UTF-8&oe=UTF-8'
+            # Construct search URL with num parameter
+            search_url = f'https://www.google.com/search?q={keyword.replace(" ", "+")}&num={num_results}'
             print(f"Navigating to: {search_url}")
             driver.get(search_url)
             
-            # Add random delay after page load
-            time.sleep(random.uniform(2, 4))
-            
-            # Scroll the page randomly to simulate human behavior
-            for _ in range(random.randint(2, 4)):
-                driver.execute_script(f"window.scrollTo(0, {random.randint(100, 500)});")
-                time.sleep(random.uniform(0.5, 1.5))
-            
-            # Check for bot detection signs
-            print("Checking page source for bot detection signs...")
-            page_source = driver.page_source.lower()
-            bot_signs = [
-                'unusual traffic',
-                'captcha',
-                'robot',
-                'automated queries',
-                'automated requests',
-                'please verify you are a human',
-                'please type the characters below',
-                'please solve this puzzle'
-            ]
-            
-            for sign in bot_signs:
-                if sign in page_source:
-                    print(f"WARNING: Found bot detection sign: '{sign}'")
-                    # Add additional delay if bot detection is found
-                    time.sleep(random.uniform(5, 8))
-                    # Try to refresh the page once
-                    driver.refresh()
-                    time.sleep(random.uniform(3, 5))
-                    page_source = driver.page_source.lower()
-            
-            # Try multiple selectors for the main results container
-            results_selectors = [
-                'div#search',  # Primary selector
-                'div[role="main"]',  # Alternative selector
-                'div#rso',  # Another common selector
-                'div[data-sokoban-container]'  # Mobile results container
-            ]
-            
-            results_container = None
-            for selector in results_selectors:
-                try:
-                    results_container = driver.find_element(By.CSS_SELECTOR, selector)
-                    if results_container:
-                        print(f"Found results container with selector: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not results_container:
-                print("WARNING: Could not find main results container with any selector")
-                # Save the page source for debugging
-                with open('debug_page_source.html', 'w', encoding='utf-8') as f:
-                    f.write(driver.page_source)
-                print("Saved page source to debug_page_source.html")
-                return []
+            # Check for bot detection
+            if any(sign in driver.page_source.lower() for sign in ['unusual traffic', 'captcha', 'verify you are a human']):
+                print("\nCaptcha detected! Opening browser for manual verification...")
+                
+                # Recreate driver without headless mode
+                driver.quit()
+                visible_options = Options()
+                visible_options.add_argument('--start-maximized')
+                visible_options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+                driver = webdriver.Chrome(service=service, options=visible_options)
+                
+                # Navigate to search URL
+                driver.get(search_url)
+                
+                # Wait for user to solve captcha
+                input("\nPlease solve the captcha in the browser window and press Enter when done...")
+                
+                # Save cookies for future use
+                print("Saving cookies for future sessions...")
+                cookies = driver.get_cookies()
+                with open(cookies_file, 'w') as f:
+                    json.dump(cookies, f)
             
             # Try multiple selectors for titles
             title_selectors = [
@@ -246,14 +181,18 @@ class TitleAnalyzer:
                 'flights',
                 'finance',
                 'all filters',
-                'reviews'
+                'reviews',
+                'refine results',
+                'sponsored',
+                'login',
+                'what people are saying',
+                'people also search for'
             }
             
             titles = []
-            domains = []
             for selector in title_selectors:
                 try:
-                    elements = results_container.find_elements(By.CSS_SELECTOR, selector)
+                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
                     if elements:
                         print(f"Found {len(elements)} titles with selector: {selector}")
                         for elem in elements:
@@ -286,18 +225,10 @@ class TitleAnalyzer:
             titles = list(dict.fromkeys(titles))
             print(f"Found {len(titles)} unique titles")
             
-            # Save the page source for debugging if no results found
-            if not titles:
-                print("WARNING: No titles found, saving page source for debugging")
-                with open('debug_page_source.html', 'w', encoding='utf-8') as f:
-                    f.write(driver.page_source)
-                print("Saved page source to debug_page_source.html")
-            
             return titles
             
         except Exception as e:
             print(f"Error scraping Google results: {str(e)}")
-            print("Full error details:", e.__class__.__name__)
             return []
             
         finally:

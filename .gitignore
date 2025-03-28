@@ -34,6 +34,12 @@ ENV/
 *.swp
 *.swo
 
+# Debug and temporary files
+debug_page_source.html
+google_page.html
+browser_data/
+*.log
+
 # OS
 .DS_Store
 .DS_Store?
