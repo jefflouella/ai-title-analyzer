@@ -28,7 +28,7 @@ A Python tool that analyzes Google search results and generates optimized title 
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/ai-title-analyzer.git
+git clone https://github.com/jefflouella/ai-title-analyzer.git
 cd ai-title-analyzer
 ```
 
