@@ -134,8 +134,42 @@ class TitleAnalyzer:
                 # Navigate to search URL
                 driver.get(search_url)
                 
-                # Wait for user to solve captcha
-                input("\nPlease solve the captcha in the browser window and press Enter when done...")
+                # Wait for captcha to be solved by checking for search results
+                max_wait_time = 300  # 5 minutes maximum wait time
+                poll_interval = 2  # Check every 2 seconds
+                start_time = time.time()
+                captcha_solved = False
+                
+                print("\nWaiting for captcha solution...")
+                while time.time() - start_time < max_wait_time:
+                    try:
+                        # Check if the page still has captcha/verification elements
+                        current_page = driver.page_source.lower()
+                        if not any(sign in current_page for sign in ['unusual traffic', 'captcha', 'verify you are a human']):
+                            # Additional verification: check for search results
+                            try:
+                                # Wait for search results to appear
+                                WebDriverWait(driver, 5).until(
+                                    EC.presence_of_element_located((By.CSS_SELECTOR, "h3"))
+                                )
+                                # If we find search results, captcha is solved
+                                print("\nCaptcha solved successfully!")
+                                captcha_solved = True
+                                break
+                            except:
+                                # If we don't find results yet, continue waiting
+                                pass
+                    except:
+                        # If there's an error checking the page, wait and try again
+                        pass
+                    
+                    # Wait before next check
+                    time.sleep(poll_interval)
+                
+                if not captcha_solved:
+                    print("\nTimeout waiting for captcha solution. Please try again.")
+                    driver.quit()
+                    return []
                 
                 # Save cookies for future use
                 print("Saving cookies for future sessions...")
