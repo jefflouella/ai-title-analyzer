@@ -19,6 +19,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 from urllib.parse import urlparse
+import random
 
 # Load environment variables
 load_dotenv()
@@ -123,149 +124,139 @@ class TitleAnalyzer:
             # Set page load timeout
             driver.set_page_load_timeout(30)
             
-            # Add more randomized headers
-            headers = {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Connection': 'keep-alive',
-                'DNT': '1',
-                'Upgrade-Insecure-Requests': '1'
-            }
-            
-            # Execute CDP commands to prevent detection
+            # Add more realistic browser headers
             driver.execute_cdp_cmd('Network.setUserAgentOverride', {
                 "userAgent": 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                "acceptLanguage": "en-US,en;q=0.9"
+                "platform": "MacIntel",
+                "acceptLanguage": "en-US,en;q=0.9",
+                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+                "sec-ch-ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"macOS"',
+                "sec-fetch-dest": "document",
+                "sec-fetch-mode": "navigate",
+                "sec-fetch-site": "none",
+                "sec-fetch-user": "?1",
+                "upgrade-insecure-requests": "1"
             })
             
-            # Set extra headers
-            for key, value in headers.items():
-                driver.execute_cdp_cmd('Network.setExtraHTTPHeaders', {'headers': {key: value}})
+            # Add random delay between 3-5 seconds to look more human-like
+            time.sleep(random.uniform(3, 5))
             
             # Navigate directly to Google search with num parameter and additional parameters
             # Replace spaces with plus signs in the keyword
             formatted_keyword = keyword.replace(' ', '+')
-            search_url = f'https://www.google.com/search?q={formatted_keyword}&num={num_results}&hl=en&safe=off&gl=US&pws=0'
+            search_url = f'https://www.google.com/search?q={formatted_keyword}&num={num_results}&hl=en&safe=off&gl=US&pws=0&sourceid=chrome&ie=UTF-8&oe=UTF-8'
             print(f"Navigating to: {search_url}")
             driver.get(search_url)
             
-            # Random delay between 2-4 seconds
-            time.sleep(2 + (time.time() % 2))
+            # Add random delay after page load
+            time.sleep(random.uniform(2, 4))
             
-            # Print page source for debugging
-            print("\nChecking page source for bot detection signs...")
+            # Scroll the page randomly to simulate human behavior
+            for _ in range(random.randint(2, 4)):
+                driver.execute_script(f"window.scrollTo(0, {random.randint(100, 500)});")
+                time.sleep(random.uniform(0.5, 1.5))
+            
+            # Check for bot detection signs
+            print("Checking page source for bot detection signs...")
             page_source = driver.page_source.lower()
-            
-            # Check for common bot detection signs
             bot_signs = [
-                "unusual traffic",
-                "please verify you are a human",
-                "captcha",
-                "automated queries",
-                "robot",
-                "automation"
+                'unusual traffic',
+                'captcha',
+                'robot',
+                'automated queries',
+                'automated requests',
+                'please verify you are a human',
+                'please type the characters below',
+                'please solve this puzzle'
             ]
             
             for sign in bot_signs:
                 if sign in page_source:
                     print(f"WARNING: Found bot detection sign: '{sign}'")
+                    # Add additional delay if bot detection is found
+                    time.sleep(random.uniform(5, 8))
+                    # Try to refresh the page once
+                    driver.refresh()
+                    time.sleep(random.uniform(3, 5))
+                    page_source = driver.page_source.lower()
             
-            # Accept cookies if the dialog appears (common in some regions)
-            try:
-                cookie_button = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Accept all')]"))
-                )
-                cookie_button.click()
-                print("Clicked cookie consent button")
-            except Exception as e:
-                print(f"No cookie dialog found or couldn't click it: {e}")
-            
-            # Wait for results to load with explicit wait
-            print("Waiting for search results to load...")
-            
-            # Try multiple selectors for search results
-            selectors = [
-                "div.g",
-                "div.MjjYud",
-                "div[data-sokoban-container]",
-                "div.rc"
+            # Try multiple selectors for the main results container
+            results_selectors = [
+                'div#search',  # Primary selector
+                'div[role="main"]',  # Alternative selector
+                'div#rso',  # Another common selector
+                'div[data-sokoban-container]'  # Mobile results container
             ]
             
-            result_container = None
-            for selector in selectors:
+            results_container = None
+            for selector in results_selectors:
                 try:
-                    result_container = WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                    )
-                    if result_container:
-                        print(f"Found results using selector: {selector}")
+                    results_container = driver.find_element(By.CSS_SELECTOR, selector)
+                    if results_container:
+                        print(f"Found results container with selector: {selector}")
                         break
                 except:
                     continue
             
-            if not result_container:
-                print("Warning: Could not find main results container with any selector")
+            if not results_container:
+                print("WARNING: Could not find main results container with any selector")
+                # Save the page source for debugging
+                with open('debug_page_source.html', 'w', encoding='utf-8') as f:
+                    f.write(driver.page_source)
+                print("Saved page source to debug_page_source.html")
+                return []
             
             # Try multiple selectors for titles
             title_selectors = [
-                "h3.LC20lb",
-                "h3.DKV0Md",
-                "div.yuRUbf h3",
-                "h3"  # Fallback to any h3
+                'h3',  # Primary selector
+                'div.g h3',  # Alternative selector
+                'div[data-sokoban-container] h3',  # Mobile results selector
+                'div[role="heading"]'  # Another common selector
             ]
             
-            all_titles = []
+            titles = []
             for selector in title_selectors:
-                titles = driver.find_elements(By.CSS_SELECTOR, selector)
-                if titles:
-                    print(f"Found {len(titles)} titles with selector: {selector}")
-                    all_titles.extend(titles)
-            
-            # Deduplicate titles
-            seen_titles = set()
-            results = []
-            
-            for title_elem in all_titles:
-                if not title_elem.text or title_elem.text.lower() in seen_titles:
-                    continue
-                
-                title = title_elem.text
-                seen_titles.add(title.lower())
-                
                 try:
-                    # Find the parent anchor tag that contains the href
-                    parent_a = title_elem.find_element(By.XPATH, "./ancestor::a")
-                    if parent_a:
-                        href = parent_a.get_attribute("href")
+                    elements = results_container.find_elements(By.CSS_SELECTOR, selector)
+                    if elements:
+                        print(f"Found {len(elements)} titles with selector: {selector}")
+                        titles.extend([elem.text for elem in elements if elem.text])
+                except Exception as e:
+                    print(f"Error with selector {selector}: {str(e)}")
+                    continue
+            
+            # Remove duplicates while preserving order
+            titles = list(dict.fromkeys(titles))
+            print(f"Found {len(titles)} unique titles")
+            
+            # Extract domains from the results
+            domains = []
+            try:
+                links = results_container.find_elements(By.CSS_SELECTOR, 'a')
+                for link in links:
+                    try:
+                        href = link.get_attribute('href')
                         if href:
-                            # Extract domain from href
                             domain = urlparse(href).netloc
-                            if domain.startswith('www.'):
-                                domain = domain[4:]  # Remove www.
-                            if domain:
-                                results.append(f"{title} ({domain})")
-                                continue
-                except:
-                    pass
-                
-                # If we couldn't get the domain or there was an error, just add the title
-                results.append(title)
+                            if domain and domain not in domains:
+                                domains.append(domain)
+                    except:
+                        continue
+            except Exception as e:
+                print(f"Error extracting domains: {str(e)}")
             
-            if not results:
-                print("No results found")
-                # Save the page source for debugging
-                with open('google_page.html', 'w', encoding='utf-8') as f:
+            print(f"Found {len(domains)} unique domains")
+            
+            # Save the page source for debugging if no results found
+            if not titles:
+                print("WARNING: No titles found, saving page source for debugging")
+                with open('debug_page_source.html', 'w', encoding='utf-8') as f:
                     f.write(driver.page_source)
-                print("Saved page source to google_page.html for debugging")
-                return []
+                print("Saved page source to debug_page_source.html")
             
-            print(f"\nFound {len(results)} unique results to analyze:")
-            for i, result in enumerate(results[:10], 1):
-                print(f"{i}. {result}")
-            if len(results) > 10:
-                print(f"... and {len(results) - 10} more")
-            
-            return results[:num_results]
+            return titles
             
         except Exception as e:
             print(f"Error scraping Google results: {str(e)}")
